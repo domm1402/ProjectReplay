@@ -270,12 +270,12 @@ private fun Capture(
     }
     Column(Modifier.fillMaxSize().padding(20.dp)) {
         Heading("SAVE THE MOMENT", "Capture", "Your best play shouldn't disappear.", t)
-        if (!captureError.isNullOrBlank()) {
+        captureError?.takeIf { it.isNotBlank() }?.let { errorMessage ->
             Surface(color = Color(0xFF542D35), shape = RoundedCornerShape(12.dp)) {
                 Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Default.Warning, null, tint = Color(0xFFFFB3B3))
                     Spacer(Modifier.width(8.dp))
-                    Text(captureError, color = Color(0xFFFFDADA), fontSize = 11.sp)
+                    Text(errorMessage, color = Color(0xFFFFDADA), fontSize = 11.sp)
                 }
             }
         }
