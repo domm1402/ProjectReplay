@@ -17,7 +17,9 @@ Project Replay is a native Kotlin + Jetpack Compose app. The long-term goal is t
 - Clip segments are pinned during export so buffer cleanup cannot delete them mid-assembly.
 - Recording resolution is capped at 1920 pixels on the longest edge.
 - Capture refuses to start when free storage is below 500 MB and displays an actionable error.
-- Local Library supports playback, sharing, deletion, search, favourites, renaming and refresh.
+- Local Library supports playback, sharing, confirmed deletion, search, favourites, renaming, sorting and refresh.
+- Clip thumbnails and duration metadata load asynchronously so video inspection does not block the UI.
+- Storage manager reports saved-clip usage, temporary replay-buffer usage and available storage; it can clear stale temporary cache when capture is stopped.
 - Android Quick Settings tile can launch capture or stop an active session.
 - GitHub Actions builds a debug APK and publishes the project-replay-debug artifact.
 
@@ -25,7 +27,7 @@ Project Replay is a native Kotlin + Jetpack Compose app. The long-term goal is t
 
 Capture now starts a rolling, user-approved MediaProjection buffer. It rotates short H.264 MP4 segments, retains a bounded recent window and uses Clip That to assemble the selected replay duration into the local library. This first implementation uses MediaRecorder segment rotation and may have brief gaps between segments; it needs device testing across Android versions, games and display modes. Recording is video-only; microphone and game audio are not enabled.
 
-The Home and Discover feeds still contain sample content. Accounts, uploads, a live social feed, creator interactions, thumbnails and a clip editor are not connected yet.
+The Home and Discover feeds still contain sample content. Accounts, uploads, a live social feed, creator interactions and a clip editor are not connected yet. Local clip thumbnails are generated from the saved video files.
 
 ## Build an APK
 
