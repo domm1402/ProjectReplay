@@ -14,6 +14,7 @@ import android.media.projection.MediaProjection
 import android.media.projection.MediaProjectionManager
 import android.os.Build
 import android.os.IBinder
+import android.os.StatFs
 import android.util.DisplayMetrics
 import android.view.WindowManager
 import java.io.File
@@ -65,9 +66,18 @@ class CaptureService : Service() {
         val metrics = DisplayMetrics()
         @Suppress("DEPRECATION")
         (getSystemService(WINDOW_SERVICE) as WindowManager).defaultDisplay.getRealMetrics(metrics)
-        val width = metrics.widthPixels.coerceAtLeast(2) / 2 * 2
-        val height = metrics.heightPixels.coerceAtLeast(2) / 2 * 2
+        val scale = minOf(1f, 1920f / maxOf(metrics.widthPixels, metrics.heightPixels).coerceAtLeast(1))
+        val width = ((metrics.widthPixels * scale).toInt().coerceAtLeast(2) / 2) * 2
+        val height = ((metrics.heightPixels * scale).toInt().coerceAtLeast(2) / 2) * 2
         val folder = File(getExternalFilesDir(null), "Movies/ProjectReplay").apply { mkdirs() }
+        val freeBytes = StatFs(folder.absolutePath).availableBytes
+        if (freeBytes < MIN_FREE_BYTES) {
+            getSharedPreferences(PREFS, MODE_PRIVATE).edit()
+                .putString("capture_error", "Not enough free storage. Project Replay needs at least 500 MB available.")
+                .apply()
+            throw IllegalStateException("Insufficient free storage")
+        }
+        getSharedPreferences(PREFS, MODE_PRIVATE).edit().remove("capture_error").apply()
         output = File(folder, "Replay_${System.currentTimeMillis()}.mp4")
         val media = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) MediaRecorder(this) else @Suppress("DEPRECATION") MediaRecorder()
         recorder = media
@@ -139,5 +149,6 @@ class CaptureService : Service() {
         private const val CHANNEL = "replay_capture"
         private const val NOTIFICATION_ID = 7301
         private const val Q = 29
+        private const val MIN_FREE_BYTES = 500L * 1024L * 1024L
     }
 }
