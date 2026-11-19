@@ -2,7 +2,7 @@
 
 ## Product direction
 
-Project Replay is a native Android gaming capture and clips community. Capture controls must be reachable while gaming, clips should be quick to review, and uploads should be bandwidth-conscious.
+Project Replay is a native Android gaming capture and clips community. Capture controls should be reachable while gaming, clips should be quick to review, and uploads should be bandwidth-conscious.
 
 ## Implemented foundation
 
@@ -11,9 +11,12 @@ Project Replay is a native Android gaming capture and clips community. Capture c
 - Theme, replay duration and quality preferences persist locally.
 - User-approved MediaProjection screen recording runs in a foreground service.
 - H.264 MP4 files are stored in app-private Movies/ProjectReplay storage.
-- Data Saver, Balanced and High presets control the screen recording bitrate.
-- Local Library lists, plays, shares and deletes saved MP4 recordings.
-- Feed entries are explicitly marked as sample content.
+- Data Saver, Balanced and High presets control recording bitrate.
+- Capture resolution is capped at 1920 pixels on the longest display edge.
+- Recording is blocked below 500 MB available storage and an error is surfaced in the Capture UI.
+- Local Library lists, plays, shares, deletes, searches, favourites and renames MP4 files.
+- Android Quick Settings tile can launch the consent flow or stop an active recording.
+- Feed entries remain labelled sample content.
 - GitHub Actions builds a debug APK and uploads it as an artifact.
 
 ## Capture architecture
@@ -28,19 +31,21 @@ Implementation requirements:
 3. Use MediaCodec for hardware-accelerated encoding where supported.
 4. Write short segments to app-private cache, not an unbounded full-session file.
 5. Maintain a bounded segment index and delete expired segments safely.
-6. On Clip That, pin the selected segments so buffer rotation cannot delete them during assembly.
+6. On Clip That, pin selected segments so buffer rotation cannot delete them during assembly.
 7. Mux segments with MediaMuxer, handling codec configuration and timestamp continuity.
 8. Handle rotation, app backgrounding, permission revocation, thermal pressure, low storage and process death.
 9. Make audio capture optional and respect Android playback-capture restrictions and each source app's policy.
-10. Never imply that capture is active unless the foreground service confirms it.
+10. Never imply capture is active unless the foreground service confirms it.
 
-A segment-based MediaCodec pipeline is preferred over keeping a large raw video file open. The target buffer duration is configurable (15, 30, 60 or 120 seconds). Actual memory and disk use should be measured on low-, mid- and high-tier devices before choosing segment size, resolution or bitrate.
+A segment-based MediaCodec pipeline is preferred over keeping a large raw video file open. The target buffer duration is configurable (15, 30, 60 or 120 seconds). Actual memory and disk use must be measured on low-, mid- and high-tier devices before choosing segment size, resolution or bitrate.
 
 ## Local library and editing
 
-The first local library milestone is implemented: saved recordings are listed, opened through Android's media viewer, shared through the system Sharesheet and deleted locally. Next:
+Implemented: saved recordings are listed, opened through Android's media viewer, shared through the system Sharesheet, deleted, searched, favourited, renamed and refreshed. The library stores files locally in app-private storage.
+
+Next:
 - Generate thumbnails and duration metadata.
-- Add rename, favourites, game folders and search.
+- Add game folders, tags and sorting.
 - Add trim, crop, mute, aspect-ratio presets and export.
 - Add optional overlay text and a simple clip title editor.
 - Keep originals until the user confirms an export or deletion.
@@ -50,7 +55,7 @@ The first local library milestone is implemented: saved recordings are listed, o
 - Current manual recording uses H.264 MP4 with selectable bitrate presets.
 - Prefer hardware HEVC when the device supports it and the user chooses compatible output.
 - Keep H.264 as a broad-compatibility fallback.
-- Consider AV1 only when both the encoder and target playback ecosystem support it well.
+- Consider AV1 only when both encoder and playback ecosystem support it.
 - Show estimated output size and actual final size.
 - Never promise a fixed file size: content complexity, resolution, frame rate and bitrate all affect it.
 
@@ -77,4 +82,4 @@ The social feed must use real server data before it is presented as a live commu
 
 ## Build
 
-Open in Android Studio with JDK 17 and a current Android SDK. GitHub Actions runs Gradle assembleDebug and publishes the APK as the project-replay-debug workflow artifact.
+Open in Android Studio with JDK 17 and Android SDK 35. GitHub Actions runs Gradle assembleDebug and publishes the APK as the project-replay-debug artifact.
