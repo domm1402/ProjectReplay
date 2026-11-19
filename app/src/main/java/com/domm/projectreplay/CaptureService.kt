@@ -27,6 +27,7 @@ class CaptureService : Service() {
     private var display: VirtualDisplay? = null
     private var currentSegment: File? = null
     private val segments = mutableListOf<File>()
+    private val pinnedSegments = mutableSetOf<File>()
     private val handler = Handler(Looper.getMainLooper())
     private val exportExecutor = Executors.newSingleThreadExecutor()
     private var stopping = false
@@ -169,7 +170,11 @@ class CaptureService : Service() {
 
     private fun pruneBuffer() {
         val keepCount = ceil(MAX_BUFFER_SECONDS.toDouble() / SEGMENT_SECONDS).toInt() + 2
-        while (segments.size > keepCount) segments.removeAt(0).delete()
+        while (segments.size > keepCount) {
+            val removable = segments.firstOrNull { it !in pinnedSegments } ?: break
+            segments.remove(removable)
+            removable.delete()
+        }
     }
 
     private fun saveReplayClip() {
@@ -180,6 +185,7 @@ class CaptureService : Service() {
         val seconds = getSharedPreferences(PREFS, MODE_PRIVATE).getInt("replay_seconds", 30).coerceIn(15, 120)
         val count = ceil(seconds.toDouble() / SEGMENT_SECONDS).toInt()
         val selected = segments.takeLast(count).toList()
+        pinnedSegments.addAll(selected)
         if (selected.isEmpty()) {
             assembling = false
             getSharedPreferences(PREFS, MODE_PRIVATE).edit().putString("capture_error", "The replay buffer is still warming up. Try again in a few seconds.").apply()
@@ -190,7 +196,14 @@ class CaptureService : Service() {
             val result = runCatching { ClipAssembler.assemble(selected, destination) }
             handler.post {
                 assembling = false
+                pinnedSegments.removeAll(selected.toSet())
                 val prefs = getSharedPreferences(PREFS, MODE_PRIVATE)
+                if (stopping) {
+                    segments.forEach { it.delete() }
+                    segments.clear()
+                } else {
+                    pruneBuffer()
+                }
                 if (result.isSuccess) {
                     prefs.edit().remove("capture_error").putString("last_saved_clip", destination.absolutePath).apply()
                     val manager = getSystemService(NotificationManager::class.java)
@@ -208,8 +221,10 @@ class CaptureService : Service() {
         stopping = true
         handler.removeCallbacks(rotateTask)
         finishSegment()?.delete()
-        segments.forEach { it.delete() }
-        segments.clear()
+        if (!assembling) {
+            segments.forEach { it.delete() }
+            segments.clear()
+        }
         val activeProjection = projection
         projection = null
         try { display?.release() } catch (_: Exception) {}
