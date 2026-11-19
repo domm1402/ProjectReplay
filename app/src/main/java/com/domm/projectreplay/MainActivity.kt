@@ -310,56 +310,149 @@ private fun DetailRow(label: String, value: String, t: ReplayTheme) {
 @Composable
 private fun Library(t: ReplayTheme) {
     val context = androidx.compose.ui.platform.LocalContext.current
+    val preferences = remember { context.getSharedPreferences("project_replay", Context.MODE_PRIVATE) }
+    val lifecycleOwner = LocalLifecycleOwner.current
     val clips = remember { mutableStateListOf<File>() }
-    LaunchedEffect(Unit) {
+    var search by remember { mutableStateOf("") }
+    var favouritesOnly by remember { mutableStateOf(false) }
+    var renameTarget by remember { mutableStateOf<File?>(null) }
+    var renameText by remember { mutableStateOf("") }
+    var refreshKey by remember { mutableIntStateOf(0) }
+
+    fun refresh() {
         val folder = File(context.getExternalFilesDir(null), "Movies/ProjectReplay")
         clips.clear()
         clips.addAll(folder.listFiles { file -> file.isFile && file.extension.equals("mp4", true) }?.sortedByDescending { it.lastModified() } ?: emptyList())
     }
+    LaunchedEffect(refreshKey) { refresh() }
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event -> if (event == Lifecycle.Event.ON_RESUME) refreshKey++ }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    val visibleClips = clips.filter { file ->
+        val matchesSearch = file.nameWithoutExtension.contains(search.trim(), ignoreCase = true)
+        val isFavourite = preferences.getBoolean("favourite:${file.name}", false)
+        matchesSearch && (!favouritesOnly || isFavourite)
+    }
+
     Column(Modifier.fillMaxSize()) {
         Heading("YOUR PERSONAL HIGHLIGHT REEL", "Library", "${clips.size} saved recording${if (clips.size == 1) "" else "s"} on this device.", t)
-        if (clips.isEmpty()) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp), verticalAlignment = Alignment.CenterVertically) {
+            OutlinedTextField(
+                value = search,
+                onValueChange = { search = it },
+                modifier = Modifier.weight(1f),
+                singleLine = true,
+                placeholder = { Text("Search recordings") },
+                leadingIcon = { Icon(Icons.Default.Search, null) },
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedTextColor = t.ink, unfocusedTextColor = t.ink,
+                    focusedBorderColor = t.accent, unfocusedBorderColor = t.ink.copy(alpha = .2f),
+                    focusedLeadingIconColor = t.accent, unfocusedLeadingIconColor = t.ink.copy(alpha = .5f),
+                    focusedPlaceholderColor = t.ink.copy(alpha = .4f), unfocusedPlaceholderColor = t.ink.copy(alpha = .4f)
+                )
+            )
+            Spacer(Modifier.width(8.dp))
+            IconButton(onClick = { favouritesOnly = !favouritesOnly }) {
+                Icon(Icons.Default.Star, "Toggle favourites only", tint = if (favouritesOnly) t.accent else t.ink.copy(alpha = .45f))
+            }
+            IconButton(onClick = { refreshKey++ }) { Icon(Icons.Default.Refresh, "Refresh library", tint = t.ink.copy(alpha = .7f)) }
+        }
+        if (visibleClips.isEmpty()) {
             Column(Modifier.padding(20.dp).fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(t.panel).padding(20.dp)) {
-                Icon(Icons.Default.VideoLibrary, null, tint = t.accent, modifier = Modifier.size(32.dp))
+                Icon(if (clips.isEmpty()) Icons.Default.VideoLibrary else Icons.Default.SearchOff, null, tint = t.accent, modifier = Modifier.size(32.dp))
                 Spacer(Modifier.height(12.dp))
-                Text("NO RECORDINGS YET", color = t.accent, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
+                Text(if (clips.isEmpty()) "NO RECORDINGS YET" else "NO MATCHES", color = t.accent, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
                 Spacer(Modifier.height(8.dp))
-                Text("Your highlight reel starts here.", color = t.ink, fontSize = 17.sp, fontWeight = FontWeight.Bold)
-                Text("Start a screen recording from Capture. Finished MP4s appear here and stay on this device.", color = t.ink.copy(alpha = .58f), fontSize = 12.sp, lineHeight = 18.sp)
+                Text(if (clips.isEmpty()) "Your highlight reel starts here." else "Try another search or turn off the favourites filter.", color = t.ink, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                Text(if (clips.isEmpty()) "Start a screen recording from Capture. Finished MP4s appear here and stay on this device." else "Your recordings are still safe on this device.", color = t.ink.copy(alpha = .58f), fontSize = 12.sp, lineHeight = 18.sp)
             }
         } else {
-            LazyColumn(contentPadding = PaddingValues(horizontal = 18.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                items(clips, key = { it.absolutePath }) { file ->
+            LazyColumn(contentPadding = PaddingValues(horizontal = 18.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                items(visibleClips, key = { it.absolutePath }) { file ->
+                    val favourite = preferences.getBoolean("favourite:${file.name}", false)
                     Surface(color = t.panel, shape = RoundedCornerShape(16.dp)) {
-                        Row(Modifier.fillMaxWidth().clickable {
-                            runCatching {
-                                val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
-                                context.startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(uri, "video/mp4").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION))
-                            }
-                        }.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Box(Modifier.size(48.dp).clip(RoundedCornerShape(12.dp)).background(t.secondary.copy(alpha = .18f)), contentAlignment = Alignment.Center) {
-                                Icon(Icons.Default.PlayArrow, null, tint = t.secondary, modifier = Modifier.size(28.dp))
-                            }
-                            Spacer(Modifier.width(12.dp))
-                            Column(Modifier.weight(1f)) {
-                                Text(file.nameWithoutExtension, color = t.ink, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                Text("${file.length() / (1024 * 1024)} MB  ·  ${java.text.SimpleDateFormat("dd MMM yyyy, HH:mm", java.util.Locale.getDefault()).format(java.util.Date(file.lastModified()))}", color = t.ink.copy(alpha = .5f), fontSize = 10.sp)
-                            }
-                            IconButton(onClick = {
+                        Column {
+                            Row(Modifier.fillMaxWidth().clickable {
                                 runCatching {
                                     val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
-                                    context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("video/mp4").putExtra(Intent.EXTRA_STREAM, uri).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION), "Share recording"))
+                                    context.startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(uri, "video/mp4").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION))
                                 }
-                            }) { Icon(Icons.Default.Share, "Share", tint = t.accent) }
-                            IconButton(onClick = { if (file.delete()) clips.remove(file) }) { Icon(Icons.Default.DeleteOutline, "Delete", tint = t.ink.copy(alpha = .6f)) }
+                            }.padding(start = 14.dp, top = 14.dp, end = 8.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Box(Modifier.size(46.dp).clip(RoundedCornerShape(12.dp)).background(t.secondary.copy(alpha = .18f)), contentAlignment = Alignment.Center) {
+                                    Icon(Icons.Default.PlayArrow, null, tint = t.secondary, modifier = Modifier.size(28.dp))
+                                }
+                                Spacer(Modifier.width(12.dp))
+                                Column(Modifier.weight(1f)) {
+                                    Text(file.nameWithoutExtension, color = t.ink, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    Text("${file.length() / (1024 * 1024)} MB  ·  ${java.text.SimpleDateFormat("dd MMM yyyy, HH:mm", java.util.Locale.getDefault()).format(java.util.Date(file.lastModified()))}", color = t.ink.copy(alpha = .5f), fontSize = 10.sp)
+                                }
+                                IconButton(onClick = {
+                                    preferences.edit().putBoolean("favourite:${file.name}", !favourite).apply()
+                                    refreshKey++
+                                }) { Icon(if (favourite) Icons.Default.Star else Icons.Default.StarBorder, "Favourite", tint = if (favourite) t.accent else t.ink.copy(alpha = .5f)) }
+                                IconButton(onClick = { renameTarget = file; renameText = file.nameWithoutExtension }) { Icon(Icons.Default.Edit, "Rename", tint = t.ink.copy(alpha = .65f)) }
+                                IconButton(onClick = {
+                                    runCatching {
+                                        val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+                                        context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("video/mp4").putExtra(Intent.EXTRA_STREAM, uri).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION), "Share recording"))
+                                    }
+                                }) { Icon(Icons.Default.Share, "Share", tint = t.accent) }
+                            }
+                            Row(Modifier.fillMaxWidth().padding(start = 72.dp, end = 14.dp, bottom = 10.dp), horizontalArrangement = Arrangement.End) {
+                                TextButton(onClick = {
+                                    if (file.delete()) {
+                                        preferences.edit().remove("favourite:${file.name}").apply()
+                                        clips.remove(file)
+                                    }
+                                }) {
+                                    Icon(Icons.Default.DeleteOutline, null, modifier = Modifier.size(15.dp), tint = t.ink.copy(alpha = .55f))
+                                    Spacer(Modifier.width(4.dp))
+                                    Text("Delete", color = t.ink.copy(alpha = .6f), fontSize = 11.sp)
+                                }
+                            }
                         }
                     }
                 }
             }
         }
     }
-}
 
+    if (renameTarget != null) {
+        AlertDialog(
+            onDismissRequest = { renameTarget = null },
+            containerColor = t.panel,
+            title = { Text("Rename recording", color = t.ink, fontWeight = FontWeight.Bold) },
+            text = {
+                OutlinedTextField(
+                    value = renameText,
+                    onValueChange = { renameText = it.take(64).filter { ch -> ch.isLetterOrDigit() || ch == ' ' || ch == '-' || ch == '_' } },
+                    singleLine = true,
+                    label = { Text("Recording name") },
+                    colors = OutlinedTextFieldDefaults.colors(focusedTextColor = t.ink, unfocusedTextColor = t.ink, focusedBorderColor = t.accent, unfocusedBorderColor = t.ink.copy(alpha = .3f))
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    val old = renameTarget
+                    val clean = renameText.trim()
+                    if (old != null && clean.isNotBlank()) {
+                        val renamed = File(old.parentFile, "$clean.mp4")
+                        if (!renamed.exists() && old.renameTo(renamed)) {
+                            val wasFavourite = preferences.getBoolean("favourite:${old.name}", false)
+                            preferences.edit().remove("favourite:${old.name}").putBoolean("favourite:${renamed.name}", wasFavourite).apply()
+                            refreshKey++
+                        }
+                    }
+                    renameTarget = null
+                }) { Text("Save", color = t.accent) }
+            },
+            dismissButton = { TextButton(onClick = { renameTarget = null }) { Text("Cancel", color = t.ink.copy(alpha = .7f)) } }
+        )
+    }
+}
 @Composable
 private fun Profile(t: ReplayTheme) {
     Column {
