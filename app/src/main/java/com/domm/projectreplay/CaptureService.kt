@@ -102,7 +102,7 @@ class CaptureService : Service() {
         val bufferFolder = File(cacheDir, "ReplayBuffer").apply { mkdirs() }
         bufferFolder.listFiles()?.forEach { it.delete() }
         segments.clear()
-        prefs.edit().remove("capture_error").putBoolean("recording", true).putString("capture_mode", "rolling_buffer").apply()
+        prefs.edit().remove("capture_error").putInt("buffer_seconds", 0).putBoolean("recording", true).putString("capture_mode", "rolling_buffer").apply()
         startSegment()
         handler.postDelayed(rotateTask, SEGMENT_MS)
         updateNotification()
@@ -158,6 +158,7 @@ class CaptureService : Service() {
         val completed = finishSegment()
         if (completed != null) segments.add(completed)
         pruneBuffer()
+        getSharedPreferences(PREFS, MODE_PRIVATE).edit().putInt("buffer_seconds", (segments.size * SEGMENT_SECONDS).coerceAtMost(MAX_BUFFER_SECONDS)).apply()
         try {
             if (!stopping && projection != null) startSegment()
         } catch (error: Exception) {
@@ -231,7 +232,7 @@ class CaptureService : Service() {
         display = null
         try { activeProjection?.stop() } catch (_: Exception) {}
         val prefs = getSharedPreferences(PREFS, MODE_PRIVATE)
-        prefs.edit().putBoolean("recording", false).remove("capture_mode").apply()
+        prefs.edit().putBoolean("recording", false).putInt("buffer_seconds", 0).remove("capture_mode").apply()
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
     }
