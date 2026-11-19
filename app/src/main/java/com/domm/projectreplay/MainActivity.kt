@@ -8,6 +8,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import java.io.File
+import kotlinx.coroutines.delay
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
@@ -65,6 +66,12 @@ private fun ReplayApp() {
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+    LaunchedEffect(Unit) {
+        while (true) {
+            recording = preferences.getBoolean("recording", false)
+            delay(750)
+        }
     }
     var themePicker by remember { mutableStateOf(false) }
     val t = theme
@@ -244,7 +251,18 @@ private fun Capture(
     onClipReplay: () -> Unit
 ) {
     val captureContext = androidx.compose.ui.platform.LocalContext.current
-    val captureError = captureContext.getSharedPreferences(CaptureService.PREFS, Context.MODE_PRIVATE).getString("capture_error", null)
+    val capturePrefs = remember { captureContext.getSharedPreferences(CaptureService.PREFS, Context.MODE_PRIVATE) }
+    var captureError by remember { mutableStateOf(capturePrefs.getString("capture_error", null)) }
+    var bufferSeconds by remember { mutableIntStateOf(capturePrefs.getInt("buffer_seconds", 0)) }
+    LaunchedEffect(recording) {
+        while (recording) {
+            captureError = capturePrefs.getString("capture_error", null)
+            bufferSeconds = capturePrefs.getInt("buffer_seconds", 0)
+            delay(750)
+        }
+        captureError = capturePrefs.getString("capture_error", null)
+        bufferSeconds = capturePrefs.getInt("buffer_seconds", 0)
+    }
     Column(Modifier.fillMaxSize().padding(20.dp)) {
         Heading("SAVE THE MOMENT", "Capture", "Your best play shouldn't disappear.", t)
         if (!captureError.isNullOrBlank()) {
@@ -280,7 +298,7 @@ private fun Capture(
                         }
                     }
                 }
-                Text("Rolling buffer active. Clip That saves the most recent selected replay window.", color = t.ink.copy(alpha = .55f), fontSize = 11.sp)
+                Text("Buffer ready: ${bufferSeconds.coerceAtMost(replaySeconds)}s / ${replaySeconds}s. Clip That saves this recent window.", color = t.ink.copy(alpha = .65f), fontSize = 11.sp)
             } else {
                 Surface(onClick = onStartRecording, color = t.accent, shape = RoundedCornerShape(14.dp)) {
                     Row(Modifier.padding(horizontal = 22.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
