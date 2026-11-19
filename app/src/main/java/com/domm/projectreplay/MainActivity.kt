@@ -4,6 +4,7 @@ import android.os.Bundle
 import android.content.Context
 import android.content.Intent
 import android.media.MediaMetadataRetriever
+import android.os.StatFs
 import android.graphics.Bitmap
 import androidx.core.content.FileProvider
 import androidx.lifecycle.Lifecycle
@@ -376,6 +377,8 @@ private fun Library(t: ReplayTheme) {
     var refreshKey by remember { mutableIntStateOf(0) }
     var sortMode by remember { mutableStateOf("Newest") }
     var sortExpanded by remember { mutableStateOf(false) }
+    var storageDialog by remember { mutableStateOf(false) }
+    var storageRefresh by remember { mutableIntStateOf(0) }
 
     fun refresh() {
         val folder = File(context.getExternalFilesDir(null), "Movies/ProjectReplay")
@@ -383,6 +386,7 @@ private fun Library(t: ReplayTheme) {
         clips.addAll(folder.listFiles { file -> file.isFile && file.extension.equals("mp4", true) }?.sortedByDescending { it.lastModified() } ?: emptyList())
     }
     LaunchedEffect(refreshKey) { refresh() }
+    LaunchedEffect(storageRefresh, refreshKey) { refresh() }
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event -> if (event == Lifecycle.Event.ON_RESUME) refreshKey++ }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -431,6 +435,7 @@ private fun Library(t: ReplayTheme) {
             IconButton(onClick = { favouritesOnly = !favouritesOnly }) {
                 Icon(Icons.Default.Star, "Toggle favourites only", tint = if (favouritesOnly) t.accent else t.ink.copy(alpha = .45f))
             }
+            IconButton(onClick = { storageDialog = true; storageRefresh++ }) { Icon(Icons.Default.Storage, "Storage manager", tint = t.ink.copy(alpha = .7f)) }
             IconButton(onClick = { refreshKey++ }) { Icon(Icons.Default.Refresh, "Refresh library", tint = t.ink.copy(alpha = .7f)) }
         }
         if (visibleClips.isEmpty()) {
@@ -510,6 +515,42 @@ private fun Library(t: ReplayTheme) {
         }
     }
 
+    if (storageDialog) {
+        val savedBytes = clips.sumOf { it.length() }
+        val bufferFolder = File(context.cacheDir, "ReplayBuffer")
+        val temporaryBytes = folderSize(bufferFolder)
+        val freeBytes = runCatching { StatFs(context.getExternalFilesDir(null)?.absolutePath ?: context.filesDir.absolutePath).availableBytes }.getOrDefault(0L)
+        val bufferActive = preferences.getBoolean("recording", false)
+        AlertDialog(
+            onDismissRequest = { storageDialog = false },
+            containerColor = t.panel,
+            title = { Text("Storage manager", color = t.ink, fontWeight = FontWeight.Bold) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    StorageLine("Saved clips", formatBytes(savedBytes), t)
+                    StorageLine("Temporary replay buffer", formatBytes(temporaryBytes), t)
+                    StorageLine("Available device storage", formatBytes(freeBytes), t)
+                    Text(
+                        if (bufferActive) "The replay buffer is active. Temporary segments are protected and cannot be cleared right now."
+                        else "Temporary segments are only used for replay capture. Saved clips are kept separately.",
+                        color = t.ink.copy(alpha = .6f), fontSize = 11.sp
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = !bufferActive && temporaryBytes > 0L,
+                    onClick = {
+                        bufferFolder.listFiles()?.forEach { it.deleteRecursively() }
+                        storageDialog = false
+                        storageRefresh++
+                    }
+                ) { Text("Clear temporary buffer", color = if (!bufferActive && temporaryBytes > 0L) t.accent else t.ink.copy(alpha = .3f)) }
+            },
+            dismissButton = { TextButton(onClick = { storageDialog = false }) { Text("Done", color = t.ink.copy(alpha = .7f)) } }
+        )
+    }
+
     if (renameTarget != null) {
         AlertDialog(
             onDismissRequest = { renameTarget = null },
@@ -543,6 +584,31 @@ private fun Library(t: ReplayTheme) {
         )
     }
 }
+private fun folderSize(folder: File): Long {
+    if (!folder.exists()) return 0L
+    return folder.walkTopDown().filter { it.isFile }.sumOf { it.length() }
+}
+
+private fun formatBytes(bytes: Long): String {
+    if (bytes < 1024L) return "$bytes B"
+    val units = listOf("KB", "MB", "GB", "TB")
+    var value = bytes.toDouble()
+    var unit = -1
+    while (value >= 1024.0 && unit < units.lastIndex) {
+        value /= 1024.0
+        unit++
+    }
+    return String.format(java.util.Locale.getDefault(), "%.1f %s", value, units[unit])
+}
+
+@Composable
+private fun StorageLine(label: String, value: String, t: ReplayTheme) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+        Text(label, color = t.ink.copy(alpha = .65f), fontSize = 12.sp)
+        Text(value, color = t.ink, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+    }
+}
+
 private fun formatDuration(durationMs: Long): String {
     val totalSeconds = (durationMs / 1000L).coerceAtLeast(0L)
     return String.format(java.util.Locale.getDefault(), "%d:%02d", totalSeconds / 60L, totalSeconds % 60L)
