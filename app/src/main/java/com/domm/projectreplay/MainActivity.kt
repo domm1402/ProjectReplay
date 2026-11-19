@@ -116,7 +116,8 @@ private fun ReplayApp() {
                         onQualityChange = { quality = it; preferences.edit().putString("quality", it).apply() },
                         recording = recording,
                         onStartRecording = { context.startActivity(Intent(context, CapturePermissionActivity::class.java)) },
-                        onStopRecording = { context.startService(Intent(context, CaptureService::class.java).setAction(CaptureService.ACTION_STOP)); recording = false }
+                        onStopRecording = { context.startService(Intent(context, CaptureService::class.java).setAction(CaptureService.ACTION_STOP)); recording = false },
+                        onClipReplay = { context.startService(Intent(context, CaptureService::class.java).setAction(CaptureService.ACTION_CLIP)) }
                     )
                     Tab.LIBRARY -> Library(t)
                     Tab.PROFILE -> Profile(t)
@@ -239,7 +240,8 @@ private fun Capture(
     onQualityChange: (String) -> Unit,
     recording: Boolean,
     onStartRecording: () -> Unit,
-    onStopRecording: () -> Unit
+    onStopRecording: () -> Unit,
+    onClipReplay: () -> Unit
 ) {
     val captureContext = androidx.compose.ui.platform.LocalContext.current
     val captureError = captureContext.getSharedPreferences(CaptureService.PREFS, Context.MODE_PRIVATE).getString("capture_error", null)
@@ -261,17 +263,37 @@ private fun Capture(
             Text("RECORD SESSION.", color = t.ink, fontSize = 25.sp, fontWeight = FontWeight.Black, letterSpacing = 1.sp)
             Text("Capture your screen from now until you stop.", color = t.ink.copy(alpha = .65f), fontSize = 12.sp)
             Spacer(Modifier.height(18.dp))
-            Surface(onClick = { if (recording) onStopRecording() else onStartRecording() }, color = if (recording) Color(0xFFB93F4B) else t.accent, shape = RoundedCornerShape(14.dp)) {
-                Row(Modifier.padding(horizontal = 22.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(if (recording) Icons.Default.Stop else Icons.Default.FiberManualRecord, null, tint = Color.White, modifier = Modifier.size(17.dp))
-                    Spacer(Modifier.width(9.dp))
-                    Text(if (recording) "STOP RECORDING" else "START SCREEN RECORDING", color = Color.White, fontWeight = FontWeight.Black, fontSize = 11.sp)
+            if (recording) {
+                Row(horizontalArrangement = Arrangement.spacedBy(9.dp)) {
+                    Surface(onClick = onClipReplay, color = t.accent, shape = RoundedCornerShape(14.dp)) {
+                        Row(Modifier.padding(horizontal = 20.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.Bolt, null, tint = Color(0xFF17131D), modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text("CLIP THAT", color = Color(0xFF17131D), fontWeight = FontWeight.Black, fontSize = 12.sp)
+                        }
+                    }
+                    Surface(onClick = onStopRecording, color = Color(0xFFB93F4B), shape = RoundedCornerShape(14.dp)) {
+                        Row(Modifier.padding(horizontal = 16.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.Stop, null, tint = Color.White, modifier = Modifier.size(17.dp))
+                            Spacer(Modifier.width(7.dp))
+                            Text("STOP", color = Color.White, fontWeight = FontWeight.Black, fontSize = 11.sp)
+                        }
+                    }
                 }
+                Text("Rolling buffer active. Clip That saves the most recent selected replay window.", color = t.ink.copy(alpha = .55f), fontSize = 11.sp)
+            } else {
+                Surface(onClick = onStartRecording, color = t.accent, shape = RoundedCornerShape(14.dp)) {
+                    Row(Modifier.padding(horizontal = 22.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.FiberManualRecord, null, tint = Color.White, modifier = Modifier.size(17.dp))
+                        Spacer(Modifier.width(9.dp))
+                        Text("START REPLAY BUFFER", color = Color.White, fontWeight = FontWeight.Black, fontSize = 11.sp)
+                    }
+                }
+                Text("Android will ask you to approve screen sharing. Once approved, Project Replay continuously buffers recent gameplay until you stop it.", color = t.ink.copy(alpha = .55f), fontSize = 11.sp)
             }
-            Text(if (recording) "Recording is active. Use the notification to stop it from another app." else "Android will ask you to approve screen sharing before recording starts.", color = t.ink.copy(alpha = .55f), fontSize = 11.sp)
         }
         Spacer(Modifier.height(18.dp))
-        Text("FUTURE REPLAY BUFFER LENGTH", color = t.ink.copy(alpha = .55f), fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
+        Text("REPLAY CLIP LENGTH", color = t.ink.copy(alpha = .55f), fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
         Spacer(Modifier.height(8.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             listOf(15, 30, 60, 120).forEach { seconds ->
@@ -304,7 +326,7 @@ private fun Capture(
         DetailRow("Audio capture", "Permission-controlled", t)
         DetailRow("Storage", "Local device first", t)
         Spacer(Modifier.height(12.dp))
-        Text("This build records a full screen session to a private on-device MP4. The selected replay length is saved for the upcoming rolling-buffer feature and does not limit this manual recording. Audio is not captured in this version.", color = t.ink.copy(alpha = .48f), fontSize = 11.sp, lineHeight = 16.sp)
+        Text("Clip That saves the most recent selected window from the rolling buffer. Capture stays on-device in temporary segments until you save a clip or stop. Audio is not captured in this version.", color = t.ink.copy(alpha = .48f), fontSize = 11.sp, lineHeight = 16.sp)
     }
 }
 
