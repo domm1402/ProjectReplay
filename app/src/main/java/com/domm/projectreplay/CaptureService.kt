@@ -23,6 +23,7 @@ class CaptureService : Service() {
     private var projection: MediaProjection? = null
     private var display: VirtualDisplay? = null
     private var output: File? = null
+    private var stopping = false
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -57,6 +58,7 @@ class CaptureService : Service() {
     private fun beginCapture(resultCode: Int, data: Intent) {
         val manager = getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
         projection = manager.getMediaProjection(resultCode, data)
+        stopping = false
         val metrics = DisplayMetrics()
         @Suppress("DEPRECATION")
         (getSystemService(WINDOW_SERVICE) as WindowManager).defaultDisplay.getRealMetrics(metrics)
@@ -70,8 +72,7 @@ class CaptureService : Service() {
         media.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
         media.setVideoEncoder(MediaRecorder.VideoEncoder.H264)
         media.setVideoSize(width, height)
-        media.setVideoFrameRate(30)
-        media.setVideoEncodingBitRate(5_000_000)
+        val quality = getSharedPreferences(PREFS, MODE_PRIVATE).getString("quality", "Balanced") ?: "Balanced"\n        val bitrate = when (quality) { "Data saver" -> 2_500_000; "High" -> 9_000_000; else -> 5_000_000 }\n        media.setVideoFrameRate(30)\n        media.setVideoEncodingBitRate(bitrate)
         media.setOutputFile(output!!.absolutePath)
         media.prepare()
         display = projection!!.createVirtualDisplay(
@@ -86,15 +87,7 @@ class CaptureService : Service() {
         }, null)
     }
 
-    private fun stopCapture() {
-        try { recorder?.stop() } catch (_: RuntimeException) { output?.delete() }
-        try { display?.release() } catch (_: Exception) {}
-        try { recorder?.reset(); recorder?.release() } catch (_: Exception) {}
-        try { projection?.stop() } catch (_: Exception) {}
-        recorder = null
-        display = null
-        projection = null
-        getSharedPreferences(PREFS, MODE_PRIVATE).edit().putBoolean("recording", false).remove("active_file").apply()
+    private fun stopCapture() {\n        if (stopping) return\n        stopping = true\n        val activeProjection = projection\n        projection = null\n        try { recorder?.stop() } catch (_: RuntimeException) { output?.delete() }\n        try { display?.release() } catch (_: Exception) {}\n        try { recorder?.reset(); recorder?.release() } catch (_: Exception) {}\n        try { activeProjection?.stop() } catch (_: Exception) {}\n        recorder = null\n        display = null\n        getSharedPreferences(PREFS, MODE_PRIVATE).edit().putBoolean("recording", false).remove("active_file").apply()
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
     }
