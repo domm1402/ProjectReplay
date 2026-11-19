@@ -50,7 +50,10 @@ class CaptureService : Service() {
         try {
             beginCapture(resultCode, resultData)
         } catch (error: Exception) {
-            getSharedPreferences(PREFS, MODE_PRIVATE).edit().putBoolean("recording", false).apply()
+            getSharedPreferences(PREFS, MODE_PRIVATE).edit()
+                .putBoolean("recording", false)
+                .putString("capture_error", getSharedPreferences(PREFS, MODE_PRIVATE).getString("capture_error", null) ?: "Screen recording could not start. Check available storage and try again.")
+                .apply()
             stopCapture()
         }
         return START_NOT_STICKY
