@@ -241,8 +241,19 @@ private fun Capture(
     onStartRecording: () -> Unit,
     onStopRecording: () -> Unit
 ) {
+    val captureContext = androidx.compose.ui.platform.LocalContext.current
+    val captureError = captureContext.getSharedPreferences(CaptureService.PREFS, Context.MODE_PRIVATE).getString("capture_error", null)
     Column(Modifier.fillMaxSize().padding(20.dp)) {
         Heading("SAVE THE MOMENT", "Capture", "Your best play shouldn't disappear.", t)
+        if (!captureError.isNullOrBlank()) {
+            Surface(color = Color(0xFF542D35), shape = RoundedCornerShape(12.dp)) {
+                Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Warning, null, tint = Color(0xFFFFB3B3))
+                    Spacer(Modifier.width(8.dp))
+                    Text(captureError, color = Color(0xFFFFDADA), fontSize = 11.sp)
+                }
+            }
+        }
         Spacer(Modifier.height(15.dp))
         Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(25.dp)).background(Brush.linearGradient(listOf(t.secondary.copy(alpha = .3f), t.panel, t.accent.copy(alpha = .14f)))).padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             Box(Modifier.size(100.dp).clip(CircleShape).background(t.accent.copy(alpha = .14f)), contentAlignment = Alignment.Center) { Icon(Icons.Default.PlayCircle, null, tint = t.accent, modifier = Modifier.size(60.dp)) }
