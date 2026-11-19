@@ -14,7 +14,7 @@ android {
         versionCode = 1
         versionName = "0.1.0"
     }
-    buildFeatures { compose = true }
+    compileOptions {\n        sourceCompatibility = JavaVersion.VERSION_17\n        targetCompatibility = JavaVersion.VERSION_17\n    }\n    kotlinOptions { jvmTarget = "17" }\n    buildFeatures { compose = true }
 }
 
 dependencies {
@@ -24,6 +24,6 @@ dependencies {
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material:material-icons-extended")
-    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
+    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")\n    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.7")\n    implementation("androidx.core:core-ktx:1.15.0")
     debugImplementation("androidx.compose.ui:ui-tooling")
 }
