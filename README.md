@@ -9,10 +9,12 @@ Project Replay is a native Kotlin + Jetpack Compose app. The long-term goal is t
 - Native app with Home, Discover, Capture, Library and Profile tabs.
 - Vice City, Christmas, Midnight and Graphite visual themes.
 - Theme, replay-duration and quality preferences persist between launches.
-- User-approved Android MediaProjection screen recording.
-- Foreground recording service with an ongoing notification and Stop action.
-- H.264 MP4 files stored in app-private Movies/ProjectReplay storage.
+- User-approved Android MediaProjection rolling screen capture.
+- Foreground recording service with Clip That and Stop notification actions.
+- H.264 MP4 segments rotate into a bounded temporary replay buffer.
+- Clip That assembles the most recent 15/30/60/120-second window into a saved MP4 without re-encoding.
 - Data Saver, Balanced and High presets adjust recording bitrate.
+- Clip segments are pinned during export so buffer cleanup cannot delete them mid-assembly.
 - Recording resolution is capped at 1920 pixels on the longest edge.
 - Capture refuses to start when free storage is below 500 MB and displays an actionable error.
 - Local Library supports playback, sharing, deletion, search, favourites, renaming and refresh.
@@ -21,7 +23,7 @@ Project Replay is a native Kotlin + Jetpack Compose app. The long-term goal is t
 
 ## Important distinction
 
-The current Capture button records a full screen session after Android's screen-sharing consent prompt. It does **not** yet keep a rolling 15/30/60/120-second buffer, so it cannot retroactively save moments from before recording began. The duration selector is saved as the target setting for the future replay-buffer feature. Recording is video-only in this build; microphone and game-audio capture are not enabled.
+Capture now starts a rolling, user-approved MediaProjection buffer. It rotates short H.264 MP4 segments, retains a bounded recent window and uses Clip That to assemble the selected replay duration into the local library. This first implementation uses MediaRecorder segment rotation and may have brief gaps between segments; it needs device testing across Android versions, games and display modes. Recording is video-only; microphone and game audio are not enabled.
 
 The Home and Discover feeds still contain sample content. Accounts, uploads, a live social feed, creator interactions, thumbnails and a clip editor are not connected yet.
 
