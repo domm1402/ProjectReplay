@@ -1,6 +1,7 @@
 package com.domm.projectreplay
 
 import android.os.Bundle
+import android.content.Context
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
@@ -45,7 +46,11 @@ class MainActivity : ComponentActivity() {
 @Composable
 private fun ReplayApp() {
     var tab by remember { mutableStateOf(Tab.HOME) }
-    var theme by remember { mutableStateOf(ReplayTheme.VICE) }
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val preferences = remember { context.getSharedPreferences("project_replay", Context.MODE_PRIVATE) }
+    var theme by remember { mutableStateOf(ReplayTheme.entries.firstOrNull { it.name == preferences.getString("theme", "VICE") } ?: ReplayTheme.VICE) }
+    var replaySeconds by remember { mutableIntStateOf(preferences.getInt("replay_seconds", 30)) }
+    var quality by remember { mutableStateOf(preferences.getString("quality", "Balanced") ?: "Balanced") }
     var themePicker by remember { mutableStateOf(false) }
     val t = theme
     MaterialTheme(colorScheme = darkColorScheme(primary = t.accent, secondary = t.secondary, background = t.bg, surface = t.panel, onBackground = t.ink, onSurface = t.ink)) {
@@ -88,7 +93,13 @@ private fun ReplayApp() {
                 when (tab) {
                     Tab.HOME -> Home(t)
                     Tab.DISCOVER -> Discover(t)
-                    Tab.CAPTURE -> Capture(t)
+                    Tab.CAPTURE -> Capture(
+                        t = t,
+                        replaySeconds = replaySeconds,
+                        onReplaySecondsChange = { replaySeconds = it; preferences.edit().putInt("replay_seconds", it).apply() },
+                        quality = quality,
+                        onQualityChange = { quality = it; preferences.edit().putString("quality", it).apply() }
+                    )
                     Tab.LIBRARY -> Library(t)
                     Tab.PROFILE -> Profile(t)
                 }
@@ -99,7 +110,7 @@ private fun ReplayApp() {
             title = { Text("Choose your look", color = t.ink, fontWeight = FontWeight.Bold) },
             text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 ReplayTheme.entries.forEach { option ->
-                    Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(13.dp)).background(option.bg).clickable { theme = option; themePicker = false }.padding(13.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(13.dp)).background(option.bg).clickable { theme = option; preferences.edit().putString("theme", option.name).apply(); themePicker = false }.padding(13.dp), verticalAlignment = Alignment.CenterVertically) {
                         Box(Modifier.size(18.dp).clip(CircleShape).background(option.accent))
                         Spacer(Modifier.width(12.dp))
                         Text(option.title, color = option.ink, fontWeight = FontWeight.SemiBold)
@@ -202,7 +213,13 @@ private fun Discover(t: ReplayTheme) {
 }
 
 @Composable
-private fun Capture(t: ReplayTheme) {
+private fun Capture(
+    t: ReplayTheme,
+    replaySeconds: Int,
+    onReplaySecondsChange: (Int) -> Unit,
+    quality: String,
+    onQualityChange: (String) -> Unit
+) {
     Column(Modifier.fillMaxSize().padding(20.dp)) {
         Heading("SAVE THE MOMENT", "Capture", "Your best play shouldn't disappear.", t)
         Spacer(Modifier.height(15.dp))
@@ -210,16 +227,45 @@ private fun Capture(t: ReplayTheme) {
             Box(Modifier.size(100.dp).clip(CircleShape).background(t.accent.copy(alpha = .14f)), contentAlignment = Alignment.Center) { Icon(Icons.Default.PlayCircle, null, tint = t.accent, modifier = Modifier.size(60.dp)) }
             Spacer(Modifier.height(16.dp))
             Text("CLIP THAT.", color = t.ink, fontSize = 25.sp, fontWeight = FontWeight.Black, letterSpacing = 1.sp)
-            Text("Save the last 30 seconds of gameplay.", color = t.ink.copy(alpha = .65f), fontSize = 12.sp)
+            Text("Save the last $replaySeconds seconds of gameplay.", color = t.ink.copy(alpha = .65f), fontSize = 12.sp)
             Spacer(Modifier.height(18.dp))
-            Surface(color = t.accent, shape = RoundedCornerShape(12.dp)) { Text("CAPTURE SETUP", Modifier.padding(horizontal = 25.dp, vertical = 13.dp), color = Color(0xFF17131D), fontWeight = FontWeight.Black, fontSize = 12.sp) }
+            Surface(color = t.accent.copy(alpha = .16f), shape = RoundedCornerShape(12.dp)) { Text("CAPTURE ENGINE IN DEVELOPMENT", Modifier.padding(horizontal = 16.dp, vertical = 12.dp), color = t.accent, fontWeight = FontWeight.Black, fontSize = 10.sp) }
         }
         Spacer(Modifier.height(18.dp))
-        DetailRow("Replay length", "15 / 30 / 60 / 120 seconds", t)
-        DetailRow("Video quality", "Optimised for your device", t)
-        DetailRow("Audio", "System audio and mic options", t)
+        Text("REPLAY LENGTH", color = t.ink.copy(alpha = .55f), fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
+        Spacer(Modifier.height(8.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            listOf(15, 30, 60, 120).forEach { seconds ->
+                Surface(
+                    onClick = { onReplaySecondsChange(seconds) },
+                    color = if (replaySeconds == seconds) t.accent else t.panel,
+                    shape = RoundedCornerShape(11.dp)
+                ) {
+                    Text("${seconds}s", Modifier.padding(horizontal = 15.dp, vertical = 11.dp),
+                        color = if (replaySeconds == seconds) Color(0xFF17131D) else t.ink,
+                        fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+        Spacer(Modifier.height(18.dp))
+        Text("VIDEO QUALITY", color = t.ink.copy(alpha = .55f), fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
+        Spacer(Modifier.height(8.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            listOf("Data saver", "Balanced", "High").forEach { preset ->
+                Surface(onClick = { onQualityChange(preset) },
+                    color = if (quality == preset) t.secondary.copy(alpha = .24f) else t.panel,
+                    shape = RoundedCornerShape(11.dp)) {
+                    Text(preset, Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                        color = if (quality == preset) t.secondary else t.ink.copy(alpha = .75f),
+                        fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                }
+            }
+        }
+        Spacer(Modifier.height(18.dp))
+        DetailRow("Audio capture", "Permission-controlled", t)
+        DetailRow("Storage", "Local device first", t)
         Spacer(Modifier.height(12.dp))
-        Text("Android will ask for screen-recording permission before capture. The replay buffer is not active in this preview build.", color = t.ink.copy(alpha = .48f), fontSize = 11.sp, lineHeight = 16.sp)
+        Text("Capture is not active yet. Android requires explicit screen-recording consent; the rolling replay engine is being built separately and this screen does not pretend to record.", color = t.ink.copy(alpha = .48f), fontSize = 11.sp, lineHeight = 16.sp)
     }
 }
 
