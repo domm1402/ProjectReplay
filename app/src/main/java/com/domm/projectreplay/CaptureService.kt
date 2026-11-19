@@ -33,8 +33,8 @@ class CaptureService : Service() {
             return START_NOT_STICKY
         }
         val resultCode = intent?.getIntExtra(EXTRA_RESULT_CODE, 0) ?: 0
-        val resultData = if (Build.VERSION.SDK_INT >= 33) intent?.getParcelableExtra(EXTRA_RESULT_DATA, Intent::class.java)
-            else @Suppress("DEPRECATION") intent?.getParcelableExtra(EXTRA_RESULT_DATA)
+        val resultData: Intent? = if (Build.VERSION.SDK_INT >= 33) intent?.getParcelableExtra(EXTRA_RESULT_DATA, Intent::class.java)
+            else @Suppress("DEPRECATION") intent?.getParcelableExtra<Intent>(EXTRA_RESULT_DATA)
         if (resultData == null) {
             stopSelf()
             return START_NOT_STICKY
