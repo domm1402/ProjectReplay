@@ -3,6 +3,8 @@ package com.domm.projectreplay
 import android.os.Bundle
 import android.content.Context
 import android.content.Intent
+import android.media.MediaMetadataRetriever
+import android.graphics.Bitmap
 import androidx.core.content.FileProvider
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -11,6 +13,7 @@ import java.io.File
 import kotlinx.coroutines.delay
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -28,6 +31,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -42,6 +46,7 @@ private enum class ReplayTheme(val title: String, val bg: Color, val panel: Colo
     GRAPHITE("Graphite", Color(0xFF111111), Color(0xFF202020), Color(0xFFE5E5E5), Color(0xFF999999), Color(0xFFF7F7F7))
 }
 private data class Clip(val title: String, val creator: String, val game: String, val views: String, val likes: String, val duration: String, val tint: Color)
+private data class LocalClipMetadata(val thumbnail: Bitmap?, val durationMs: Long)
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -369,6 +374,8 @@ private fun Library(t: ReplayTheme) {
     var renameTarget by remember { mutableStateOf<File?>(null) }
     var renameText by remember { mutableStateOf("") }
     var refreshKey by remember { mutableIntStateOf(0) }
+    var sortMode by remember { mutableStateOf("Newest") }
+    var sortExpanded by remember { mutableStateOf(false) }
 
     fun refresh() {
         val folder = File(context.getExternalFilesDir(null), "Movies/ProjectReplay")
@@ -386,6 +393,13 @@ private fun Library(t: ReplayTheme) {
         val matchesSearch = file.nameWithoutExtension.contains(search.trim(), ignoreCase = true)
         val isFavourite = preferences.getBoolean("favourite:${file.name}", false)
         matchesSearch && (!favouritesOnly || isFavourite)
+    }.let { filtered ->
+        when (sortMode) {
+            "Oldest" -> filtered.sortedBy { it.lastModified() }
+            "Largest" -> filtered.sortedByDescending { it.length() }
+            "Smallest" -> filtered.sortedBy { it.length() }
+            else -> filtered.sortedByDescending { it.lastModified() }
+        }
     }
 
     Column(Modifier.fillMaxSize()) {
@@ -406,6 +420,14 @@ private fun Library(t: ReplayTheme) {
                 )
             )
             Spacer(Modifier.width(8.dp))
+            Box {
+                IconButton(onClick = { sortExpanded = true }) { Icon(Icons.Default.Sort, "Sort recordings", tint = t.ink.copy(alpha = .7f)) }
+                DropdownMenu(expanded = sortExpanded, onDismissRequest = { sortExpanded = false }) {
+                    listOf("Newest", "Oldest", "Largest", "Smallest").forEach { option ->
+                        DropdownMenuItem(text = { Text(option) }, onClick = { sortMode = option; sortExpanded = false })
+                    }
+                }
+            }
             IconButton(onClick = { favouritesOnly = !favouritesOnly }) {
                 Icon(Icons.Default.Star, "Toggle favourites only", tint = if (favouritesOnly) t.accent else t.ink.copy(alpha = .45f))
             }
@@ -424,6 +446,16 @@ private fun Library(t: ReplayTheme) {
             LazyColumn(contentPadding = PaddingValues(horizontal = 18.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 items(visibleClips, key = { it.absolutePath }) { file ->
                     val favourite = preferences.getBoolean("favourite:${file.name}", false)
+                    val metadata = remember(file.absolutePath, file.lastModified()) {
+                        runCatching {
+                            val retriever = MediaMetadataRetriever()
+                            try {
+                                retriever.setDataSource(file.absolutePath)
+                                LocalClipMetadata(retriever.getFrameAtTime(1_000_000L, MediaMetadataRetriever.OPTION_CLOSEST_SYNC),
+                                    retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L)
+                            } finally { retriever.release() }
+                        }.getOrNull() ?: LocalClipMetadata(null, 0L)
+                    }
                     Surface(color = t.panel, shape = RoundedCornerShape(16.dp)) {
                         Column {
                             Row(Modifier.fillMaxWidth().clickable {
@@ -432,13 +464,20 @@ private fun Library(t: ReplayTheme) {
                                     context.startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(uri, "video/mp4").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION))
                                 }
                             }.padding(start = 14.dp, top = 14.dp, end = 8.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                                Box(Modifier.size(46.dp).clip(RoundedCornerShape(12.dp)).background(t.secondary.copy(alpha = .18f)), contentAlignment = Alignment.Center) {
-                                    Icon(Icons.Default.PlayArrow, null, tint = t.secondary, modifier = Modifier.size(28.dp))
+                                Box(Modifier.size(62.dp, 48.dp).clip(RoundedCornerShape(10.dp)).background(t.secondary.copy(alpha = .18f)), contentAlignment = Alignment.Center) {
+                                    if (metadata.thumbnail != null) {
+                                        Image(metadata.thumbnail.asImageBitmap(), "Clip thumbnail", modifier = Modifier.fillMaxSize())
+                                    } else {
+                                        Icon(Icons.Default.PlayArrow, null, tint = t.secondary, modifier = Modifier.size(28.dp))
+                                    }
+                                    Surface(color = Color.Black.copy(alpha = .72f), shape = RoundedCornerShape(4.dp), modifier = Modifier.align(Alignment.BottomEnd).padding(3.dp)) {
+                                        Text(formatDuration(metadata.durationMs), modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp), color = Color.White, fontSize = 8.sp, fontWeight = FontWeight.Bold)
+                                    }
                                 }
                                 Spacer(Modifier.width(12.dp))
                                 Column(Modifier.weight(1f)) {
                                     Text(file.nameWithoutExtension, color = t.ink, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                    Text("${file.length() / (1024 * 1024)} MB  ·  ${java.text.SimpleDateFormat("dd MMM yyyy, HH:mm", java.util.Locale.getDefault()).format(java.util.Date(file.lastModified()))}", color = t.ink.copy(alpha = .5f), fontSize = 10.sp)
+                                    Text("${String.format(java.util.Locale.getDefault(), "%.1f", file.length() / (1024f * 1024f))} MB  ·  ${java.text.SimpleDateFormat("dd MMM yyyy, HH:mm", java.util.Locale.getDefault()).format(java.util.Date(file.lastModified()))}", color = t.ink.copy(alpha = .5f), fontSize = 10.sp)
                                 }
                                 IconButton(onClick = {
                                     preferences.edit().putBoolean("favourite:${file.name}", !favourite).apply()
@@ -504,6 +543,11 @@ private fun Library(t: ReplayTheme) {
         )
     }
 }
+private fun formatDuration(durationMs: Long): String {
+    val totalSeconds = (durationMs / 1000L).coerceAtLeast(0L)
+    return String.format(java.util.Locale.getDefault(), "%d:%02d", totalSeconds / 60L, totalSeconds % 60L)
+}
+
 @Composable
 private fun Profile(t: ReplayTheme) {
     Column {
