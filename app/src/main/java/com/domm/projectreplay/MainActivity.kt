@@ -2,6 +2,12 @@ package com.domm.projectreplay
 
 import android.os.Bundle
 import android.content.Context
+import android.content.Intent
+import androidx.core.content.FileProvider
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import java.io.File
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
@@ -51,6 +57,15 @@ private fun ReplayApp() {
     var theme by remember { mutableStateOf(ReplayTheme.entries.firstOrNull { it.name == preferences.getString("theme", "VICE") } ?: ReplayTheme.VICE) }
     var replaySeconds by remember { mutableIntStateOf(preferences.getInt("replay_seconds", 30)) }
     var quality by remember { mutableStateOf(preferences.getString("quality", "Balanced") ?: "Balanced") }
+    var recording by remember { mutableStateOf(preferences.getBoolean("recording", false)) }
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) recording = preferences.getBoolean("recording", false)
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
     var themePicker by remember { mutableStateOf(false) }
     val t = theme
     MaterialTheme(colorScheme = darkColorScheme(primary = t.accent, secondary = t.secondary, background = t.bg, surface = t.panel, onBackground = t.ink, onSurface = t.ink)) {
@@ -98,7 +113,10 @@ private fun ReplayApp() {
                         replaySeconds = replaySeconds,
                         onReplaySecondsChange = { replaySeconds = it; preferences.edit().putInt("replay_seconds", it).apply() },
                         quality = quality,
-                        onQualityChange = { quality = it; preferences.edit().putString("quality", it).apply() }
+                        onQualityChange = { quality = it; preferences.edit().putString("quality", it).apply() },
+                        recording = recording,
+                        onStartRecording = { context.startActivity(Intent(context, CapturePermissionActivity::class.java)) },
+                        onStopRecording = { context.startService(Intent(context, CaptureService::class.java).setAction(CaptureService.ACTION_STOP)); recording = false }
                     )
                     Tab.LIBRARY -> Library(t)
                     Tab.PROFILE -> Profile(t)
@@ -218,7 +236,10 @@ private fun Capture(
     replaySeconds: Int,
     onReplaySecondsChange: (Int) -> Unit,
     quality: String,
-    onQualityChange: (String) -> Unit
+    onQualityChange: (String) -> Unit,
+    recording: Boolean,
+    onStartRecording: () -> Unit,
+    onStopRecording: () -> Unit
 ) {
     Column(Modifier.fillMaxSize().padding(20.dp)) {
         Heading("SAVE THE MOMENT", "Capture", "Your best play shouldn't disappear.", t)
@@ -227,12 +248,19 @@ private fun Capture(
             Box(Modifier.size(100.dp).clip(CircleShape).background(t.accent.copy(alpha = .14f)), contentAlignment = Alignment.Center) { Icon(Icons.Default.PlayCircle, null, tint = t.accent, modifier = Modifier.size(60.dp)) }
             Spacer(Modifier.height(16.dp))
             Text("CLIP THAT.", color = t.ink, fontSize = 25.sp, fontWeight = FontWeight.Black, letterSpacing = 1.sp)
-            Text("Save the last $replaySeconds seconds of gameplay.", color = t.ink.copy(alpha = .65f), fontSize = 12.sp)
+            Text("Record gameplay or anything else on your screen.", color = t.ink.copy(alpha = .65f), fontSize = 12.sp)
             Spacer(Modifier.height(18.dp))
-            Surface(color = t.accent.copy(alpha = .16f), shape = RoundedCornerShape(12.dp)) { Text("CAPTURE ENGINE IN DEVELOPMENT", Modifier.padding(horizontal = 16.dp, vertical = 12.dp), color = t.accent, fontWeight = FontWeight.Black, fontSize = 10.sp) }
+            Surface(onClick = { if (recording) onStopRecording() else onStartRecording() }, color = if (recording) Color(0xFFB93F4B) else t.accent, shape = RoundedCornerShape(14.dp)) {
+                Row(Modifier.padding(horizontal = 22.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(if (recording) Icons.Default.Stop else Icons.Default.FiberManualRecord, null, tint = Color.White, modifier = Modifier.size(17.dp))
+                    Spacer(Modifier.width(9.dp))
+                    Text(if (recording) "STOP RECORDING" else "START SCREEN RECORDING", color = Color.White, fontWeight = FontWeight.Black, fontSize = 11.sp)
+                }
+            }
+            Text(if (recording) "Recording is active. Use the notification to stop it from another app." else "Android will ask you to approve screen sharing before recording starts.", color = t.ink.copy(alpha = .55f), fontSize = 11.sp)
         }
         Spacer(Modifier.height(18.dp))
-        Text("REPLAY LENGTH", color = t.ink.copy(alpha = .55f), fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
+        Text("FUTURE REPLAY BUFFER LENGTH", color = t.ink.copy(alpha = .55f), fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
         Spacer(Modifier.height(8.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             listOf(15, 30, 60, 120).forEach { seconds ->
@@ -265,7 +293,7 @@ private fun Capture(
         DetailRow("Audio capture", "Permission-controlled", t)
         DetailRow("Storage", "Local device first", t)
         Spacer(Modifier.height(12.dp))
-        Text("Capture is not active yet. Android requires explicit screen-recording consent; the rolling replay engine is being built separately and this screen does not pretend to record.", color = t.ink.copy(alpha = .48f), fontSize = 11.sp, lineHeight = 16.sp)
+        Text("This build records a full screen session to a private on-device MP4. The selected replay length is saved for the upcoming rolling-buffer feature and does not limit this manual recording. Audio is not captured in this version.", color = t.ink.copy(alpha = .48f), fontSize = 11.sp, lineHeight = 16.sp)
     }
 }
 
@@ -281,13 +309,53 @@ private fun DetailRow(label: String, value: String, t: ReplayTheme) {
 
 @Composable
 private fun Library(t: ReplayTheme) {
-    Column {
-        Heading("YOUR PERSONAL HIGHLIGHT REEL", "Library", "Every clutch, close call and ridiculous moment.", t)
-        Column(Modifier.padding(20.dp).fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(t.panel).padding(20.dp)) {
-            Text("NO CLIPS YET", color = t.accent, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
-            Spacer(Modifier.height(8.dp))
-            Text("Your next favourite clip starts here.", color = t.ink, fontSize = 17.sp, fontWeight = FontWeight.Bold)
-            Text("Saved recordings will appear here. Organise them into game folders and favourites.", color = t.ink.copy(alpha = .58f), fontSize = 12.sp, lineHeight = 18.sp)
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val clips = remember { mutableStateListOf<File>() }
+    LaunchedEffect(Unit) {
+        val folder = File(context.getExternalFilesDir(null), "Movies/ProjectReplay")
+        clips.clear()
+        clips.addAll(folder.listFiles { file -> file.isFile && file.extension.equals("mp4", true) }?.sortedByDescending { it.lastModified() } ?: emptyList())
+    }
+    Column(Modifier.fillMaxSize()) {
+        Heading("YOUR PERSONAL HIGHLIGHT REEL", "Library", "${clips.size} saved recording${if (clips.size == 1) "" else "s"} on this device.", t)
+        if (clips.isEmpty()) {
+            Column(Modifier.padding(20.dp).fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(t.panel).padding(20.dp)) {
+                Icon(Icons.Default.VideoLibrary, null, tint = t.accent, modifier = Modifier.size(32.dp))
+                Spacer(Modifier.height(12.dp))
+                Text("NO RECORDINGS YET", color = t.accent, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
+                Spacer(Modifier.height(8.dp))
+                Text("Your highlight reel starts here.", color = t.ink, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                Text("Start a screen recording from Capture. Finished MP4s appear here and stay on this device.", color = t.ink.copy(alpha = .58f), fontSize = 12.sp, lineHeight = 18.sp)
+            }
+        } else {
+            LazyColumn(contentPadding = PaddingValues(horizontal = 18.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                items(clips, key = { it.absolutePath }) { file ->
+                    Surface(color = t.panel, shape = RoundedCornerShape(16.dp)) {
+                        Row(Modifier.fillMaxWidth().clickable {
+                            runCatching {
+                                val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+                                context.startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(uri, "video/mp4").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION))
+                            }
+                        }.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Box(Modifier.size(48.dp).clip(RoundedCornerShape(12.dp)).background(t.secondary.copy(alpha = .18f)), contentAlignment = Alignment.Center) {
+                                Icon(Icons.Default.PlayArrow, null, tint = t.secondary, modifier = Modifier.size(28.dp))
+                            }
+                            Spacer(Modifier.width(12.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text(file.nameWithoutExtension, color = t.ink, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text("${file.length() / (1024 * 1024)} MB  ·  ${java.text.SimpleDateFormat("dd MMM yyyy, HH:mm", java.util.Locale.getDefault()).format(java.util.Date(file.lastModified()))}", color = t.ink.copy(alpha = .5f), fontSize = 10.sp)
+                            }
+                            IconButton(onClick = {
+                                runCatching {
+                                    val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+                                    context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("video/mp4").putExtra(Intent.EXTRA_STREAM, uri).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION), "Share recording"))
+                                }
+                            }) { Icon(Icons.Default.Share, "Share", tint = t.accent) }
+                            IconButton(onClick = { if (file.delete()) clips.remove(file) }) { Icon(Icons.Default.DeleteOutline, "Delete", tint = t.ink.copy(alpha = .6f)) }
+                        }
+                    }
+                }
+            }
         }
     }
 }
