@@ -258,8 +258,8 @@ private fun Capture(
         Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(25.dp)).background(Brush.linearGradient(listOf(t.secondary.copy(alpha = .3f), t.panel, t.accent.copy(alpha = .14f)))).padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             Box(Modifier.size(100.dp).clip(CircleShape).background(t.accent.copy(alpha = .14f)), contentAlignment = Alignment.Center) { Icon(Icons.Default.PlayCircle, null, tint = t.accent, modifier = Modifier.size(60.dp)) }
             Spacer(Modifier.height(16.dp))
-            Text("CLIP THAT.", color = t.ink, fontSize = 25.sp, fontWeight = FontWeight.Black, letterSpacing = 1.sp)
-            Text("Record gameplay or anything else on your screen.", color = t.ink.copy(alpha = .65f), fontSize = 12.sp)
+            Text("RECORD SESSION.", color = t.ink, fontSize = 25.sp, fontWeight = FontWeight.Black, letterSpacing = 1.sp)
+            Text("Capture your screen from now until you stop.", color = t.ink.copy(alpha = .65f), fontSize = 12.sp)
             Spacer(Modifier.height(18.dp))
             Surface(onClick = { if (recording) onStopRecording() else onStartRecording() }, color = if (recording) Color(0xFFB93F4B) else t.accent, shape = RoundedCornerShape(14.dp)) {
                 Row(Modifier.padding(horizontal = 22.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
