@@ -12,6 +12,8 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import java.io.File
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.Image
@@ -379,6 +381,7 @@ private fun Library(t: ReplayTheme) {
     var sortExpanded by remember { mutableStateOf(false) }
     var storageDialog by remember { mutableStateOf(false) }
     var storageRefresh by remember { mutableIntStateOf(0) }
+    var deleteTarget by remember { mutableStateOf<File?>(null) }
 
     fun refresh() {
         val folder = File(context.getExternalFilesDir(null), "Movies/ProjectReplay")
@@ -451,15 +454,17 @@ private fun Library(t: ReplayTheme) {
             LazyColumn(contentPadding = PaddingValues(horizontal = 18.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 items(visibleClips, key = { it.absolutePath }) { file ->
                     val favourite = preferences.getBoolean("favourite:${file.name}", false)
-                    val metadata = remember(file.absolutePath, file.lastModified()) {
-                        runCatching {
-                            val retriever = MediaMetadataRetriever()
-                            try {
-                                retriever.setDataSource(file.absolutePath)
-                                LocalClipMetadata(retriever.getFrameAtTime(1_000_000L, MediaMetadataRetriever.OPTION_CLOSEST_SYNC),
-                                    retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L)
-                            } finally { retriever.release() }
-                        }.getOrNull() ?: LocalClipMetadata(null, 0L)
+                    val metadata by produceState(LocalClipMetadata(null, 0L), file.absolutePath, file.lastModified()) {
+                        value = withContext(Dispatchers.IO) {
+                            runCatching {
+                                val retriever = MediaMetadataRetriever()
+                                try {
+                                    retriever.setDataSource(file.absolutePath)
+                                    LocalClipMetadata(retriever.getFrameAtTime(1_000_000L, MediaMetadataRetriever.OPTION_CLOSEST_SYNC),
+                                        retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L)
+                                } finally { retriever.release() }
+                            }.getOrNull() ?: LocalClipMetadata(null, 0L)
+                        }
                     }
                     Surface(color = t.panel, shape = RoundedCornerShape(16.dp)) {
                         Column {
@@ -497,12 +502,7 @@ private fun Library(t: ReplayTheme) {
                                 }) { Icon(Icons.Default.Share, "Share", tint = t.accent) }
                             }
                             Row(Modifier.fillMaxWidth().padding(start = 72.dp, end = 14.dp, bottom = 10.dp), horizontalArrangement = Arrangement.End) {
-                                TextButton(onClick = {
-                                    if (file.delete()) {
-                                        preferences.edit().remove("favourite:${file.name}").apply()
-                                        clips.remove(file)
-                                    }
-                                }) {
+                                TextButton(onClick = { deleteTarget = file }) {
                                     Icon(Icons.Default.DeleteOutline, null, modifier = Modifier.size(15.dp), tint = t.ink.copy(alpha = .55f))
                                     Spacer(Modifier.width(4.dp))
                                     Text("Delete", color = t.ink.copy(alpha = .6f), fontSize = 11.sp)
@@ -513,6 +513,26 @@ private fun Library(t: ReplayTheme) {
                 }
             }
         }
+    }
+
+    if (deleteTarget != null) {
+        val target = deleteTarget
+        AlertDialog(
+            onDismissRequest = { deleteTarget = null },
+            containerColor = t.panel,
+            title = { Text("Delete this clip?", color = t.ink, fontWeight = FontWeight.Bold) },
+            text = { Text("This permanently deletes the saved video from this device. This cannot be undone.", color = t.ink.copy(alpha = .7f)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    if (target != null && target.delete()) {
+                        preferences.edit().remove("favourite:" + target.name).apply()
+                        clips.remove(target)
+                    }
+                    deleteTarget = null
+                }) { Text("Delete permanently", color = Color(0xFFFF7777)) }
+            },
+            dismissButton = { TextButton(onClick = { deleteTarget = null }) { Text("Cancel", color = t.ink.copy(alpha = .7f)) } }
+        )
     }
 
     if (storageDialog) {
