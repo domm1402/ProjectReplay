@@ -9,8 +9,10 @@ Project Replay is a native Android gaming capture and clips community. Capture c
 - Jetpack Compose navigation: Home, Discover, Capture, Library, Profile.
 - Vice City, Christmas, Midnight and Graphite visual themes.
 - Theme, replay duration and quality preferences persist locally.
-- User-approved MediaProjection screen recording runs in a foreground service.
-- H.264 MP4 files are stored in app-private Movies/ProjectReplay storage.
+- User-approved MediaProjection rolling capture runs in a foreground service.
+- H.264 MP4 segments rotate into a bounded cache buffer.
+- Clip That selects the latest configured replay window and assembles it into a local MP4 using MediaExtractor and MediaMuxer without re-encoding.
+- Segments selected for export are pinned until assembly completes.
 - Data Saver, Balanced and High presets control recording bitrate.
 - Capture resolution is capped at 1920 pixels on the longest display edge.
 - Recording is blocked below 500 MB available storage and an error is surfaced in the Capture UI.
@@ -21,9 +23,9 @@ Project Replay is a native Android gaming capture and clips community. Capture c
 
 ## Capture architecture
 
-The current manual recorder captures the screen from the moment the user approves recording until they stop it. It is a working foundation, not the defining rolling replay feature.
+The first rolling-buffer milestone is implemented using a user-approved MediaProjection session. MediaRecorder writes short H.264 MP4 segments; the service rotates the encoder surface on a timer and retains a bounded cache. Clip That finalizes the current segment, selects enough recent segments to cover the chosen 15/30/60/120-second window, pins them against cleanup and joins their encoded video samples into a single MP4 with MediaExtractor and MediaMuxer. The export avoids a full re-encode.
 
-Android does not provide an API for an app to retroactively fetch arbitrary screen history. The app must start a user-approved MediaProjection session first, then continuously encode short media segments into a bounded local buffer. When the user invokes Clip That, the app should preserve the newest segments covering the selected replay duration and assemble them into a playable clip.
+This is an initial implementation, not yet a verified production-grade capture engine. Encoder restarts can create small gaps, segment boundaries and timestamps need device testing, and sustained recording can affect thermal and battery performance. It has not yet been validated across Android versions, game renderers, rotation changes or protected-content scenarios.
 
 Implementation requirements:
 1. Request MediaProjection consent from the user before starting capture.
